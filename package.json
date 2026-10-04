@@ -1,0 +1,30 @@
+{
+  "name": "@dayzero_run/sdk",
+  "version": "0.1.0",
+  "description": "Browser SDK for dayzero.run project tables",
+  "license": "MIT",
+  "author": "dayzero.run",
+  "homepage": "https://dayzero.run/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dayzero-run/SDK.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dayzero-run/SDK/issues"
+  },
+  "keywords": [
+    "dayzero",
+    "d0",
+    "tables",
+    "vibe coding",
+    "sdk"
+  ],
+  "main": "dayzero.js",
+  "browser": "dayzero.js",
+  "unpkg": "dayzero.js",
+  "jsdelivr": "dayzero.js",
+  "files": [
+    "dayzero.js",
+    "README.md"
+  ]
+}
