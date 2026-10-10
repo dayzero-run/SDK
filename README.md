@@ -64,6 +64,7 @@ var waitlist = Dayzero.tables.from("waitlist");
 waitlist.insert({ email: "friend@example.com" });
 waitlist.list();
 waitlist.update("row_123", { email: "new@example.com" });
+// update keeps fields you do not send. A blank value does not erase the stored one.
 waitlist.remove("row_123");
 ```
 

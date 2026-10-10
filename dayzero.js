@@ -10,7 +10,8 @@
 
   var settings = {
     apiBase: DEFAULT_API_BASE,
-    project: ""
+    project: "",
+    siteKey: ""
   };
 
   // Remove a trailing slash so later paths can be joined cleanly.
@@ -95,8 +96,13 @@
   function requestJson(method, path, bodyObject, queryObject) {
     var apiBase = trimTrailingSlash(settings.apiBase || DEFAULT_API_BASE);
     var projectName = resolveProjectName();
+    var siteKey = String(settings.siteKey || "").trim();
     var queryParts = [];
     var queryKey;
+
+    if (!siteKey) {
+      return Promise.reject(new Error("Dayzero.init({ siteKey }) is required"));
+    }
 
     if (queryObject) {
       for (queryKey in queryObject) {
@@ -105,8 +111,11 @@
         }
       }
     }
-    if ((method === "GET" || method === "DELETE") && projectName) {
-      queryParts.push("project=" + encodeURIComponent(projectName));
+    if (method === "GET" || method === "DELETE") {
+      queryParts.push("siteKey=" + encodeURIComponent(siteKey));
+      if (projectName) {
+        queryParts.push("project=" + encodeURIComponent(projectName));
+      }
     }
 
     var url = apiBase + path;
@@ -115,7 +124,8 @@
     }
 
     var headers = {
-      Accept: "application/json"
+      Accept: "application/json",
+      "X-Dayzero-Site-Key": siteKey
     };
     if (projectName) {
       headers["X-Dayzero-Project"] = projectName;
@@ -135,6 +145,7 @@
           requestBody[bodyKey] = bodyObject[bodyKey];
         }
       }
+      requestBody.siteKey = siteKey;
       if (projectName) {
         requestBody.project = projectName;
       }
@@ -161,6 +172,33 @@
     return cleanedName;
   }
 
+  // Keep stored fields when an update omits them or sends a blank value.
+  function mergeRowData(existingData, incomingData) {
+    var mergedData = {};
+    var fieldName;
+    var currentData = existingData || {};
+    var nextData = incomingData || {};
+
+    for (fieldName in currentData) {
+      if (Object.prototype.hasOwnProperty.call(currentData, fieldName)) {
+        mergedData[fieldName] = currentData[fieldName];
+      }
+    }
+
+    for (fieldName in nextData) {
+      if (!Object.prototype.hasOwnProperty.call(nextData, fieldName)) {
+        continue;
+      }
+      var nextValue = nextData[fieldName];
+      if (nextValue === undefined || nextValue === null || nextValue === "") {
+        continue;
+      }
+      mergedData[fieldName] = nextValue;
+    }
+
+    return mergedData;
+  }
+
   // Create a helper for one named table.
   function createTableClient(tableName) {
     var resolvedTableName = requireTableName(tableName);
@@ -183,18 +221,32 @@
         });
       },
 
-      // Replace the field values on one existing row.
+      // Change some fields on one row and keep every field this call does not send.
       update: function (rowId, rowData) {
         var resolvedRowId = String(rowId || "").trim();
         if (!resolvedRowId) {
           return Promise.reject(new Error("A row id is required"));
         }
-        return requestJson(
-          "PATCH",
-          "/v1/site/tables/" + encodedTableName + "/rows/" + encodeURIComponent(resolvedRowId),
-          { data: rowData || {} }
-        ).then(function (payload) {
-          return payload.row;
+        return requestJson("GET", "/v1/site/tables/" + encodedTableName + "/rows").then(function (payload) {
+          var rows = payload.rows || [];
+          var existingRow = null;
+          var rowIndex;
+          for (rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+            if (rows[rowIndex] && rows[rowIndex].id === resolvedRowId) {
+              existingRow = rows[rowIndex];
+              break;
+            }
+          }
+          if (!existingRow) {
+            return Promise.reject(new Error("row not found"));
+          }
+          return requestJson(
+            "PATCH",
+            "/v1/site/tables/" + encodedTableName + "/rows/" + encodeURIComponent(resolvedRowId),
+            { data: mergeRowData(existingRow.data, rowData) }
+          ).then(function (updatedPayload) {
+            return updatedPayload.row;
+          });
         });
       },
 
@@ -219,6 +271,7 @@
       var hostname = currentHostname();
       var apiBase = nextOptions.apiBase;
       var projectName = nextOptions.project;
+      var siteKey = nextOptions.siteKey;
 
       if (!apiBase) {
         apiBase = defaultApiBaseForHostname(hostname);
@@ -229,6 +282,7 @@
 
       settings.apiBase = trimTrailingSlash(apiBase);
       settings.project = String(projectName || "").trim().toLowerCase();
+      settings.siteKey = String(siteKey || "").trim();
       return Dayzero;
     },
 
@@ -236,11 +290,19 @@
     settings: function () {
       return {
         apiBase: settings.apiBase,
-        project: resolveProjectName()
+        project: resolveProjectName(),
+        siteKey: settings.siteKey
       };
     },
 
     tables: {
+      // List every table on this project. Schema lives in the dashboard.
+      list: function () {
+        return requestJson("GET", "/v1/site/tables").then(function (payload) {
+          return payload.tables || [];
+        });
+      },
+
       // Return a client for one project table created in the dashboard.
       from: function (tableName) {
         return createTableClient(tableName);
